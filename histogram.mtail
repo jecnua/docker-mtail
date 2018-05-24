@@ -1,0 +1,87 @@
+# Parser for the common apache log format as follow.
+# LogFormat "%h %l %u %t \"%r\" %>s %b %D \"%{Referer}i\" \"%{User-agent}i\"
+counter apache_http_requests_total by request_method, status_code
+counter apache_http_bytes_total by request_method, status_code
+counter apache_http_request_time_microseconds_count by request_method, status_code
+counter apache_http_request_time_microseconds by le, request_method, status_code
+gauge apache_http_response_time by request_method, status_code
+gauge apache_http_response_size by request_method, status_code
+
+/^/ +
+/(?P<remote_host>[0-9A-Za-z\.-]+) / + # %h
+/(?P<real_host>[0-9A-Za-z\.-]+) / + # The second one
+/(?P<remote_logname>[0-9A-Za-z-]+) / + # %l
+/(?P<remote_username>[0-9A-Za-z-]+) / + # %u
+/(?P<timestamp>\[\d{2}\/\w{3}\/\d{4}:\d{2}:\d{2}:\d{2} (\+|-)\d{4}\]) / + # %t
+/(?P<response_time>\d+) / + # %D
+/"(?P<request_method>[A-Z]+) (?P<request_uri>\S+) (?P<http_version>HTTP\/[0-9\.]+)" / + # \"%r\"
+/(?P<status_code>\d{3}) / + # %>s
+/(?P<response_size>\d+) / + # %b
+/"(?P<referer>\S+)" / + # \"%{Referer}i\"
+/"(?P<user_agent>[[:print:]]+)" / + # \"%{User-agent}i\"
+/"(?P<amazon>[[:print:]]+)"/ + # \"%{X-Amzn-Trace-Id}i\"
+/$/ {
+  apache_http_requests_total[$request_method][$status_code]++
+  apache_http_bytes_total[$request_method][$status_code] += $response_size
+  apache_http_response_time[$request_method][$status_code] = $response_time
+  apache_http_response_size[$request_method][$status_code] = $response_size
+
+  ###
+  # HTTP Requests with histogram buckets.
+  ###
+  apache_http_request_time_microseconds_count[$request_method][$status_code]++
+
+  # These statements "fall through", so the histogram is cumulative.  The
+  # collecting system can compute the percentile bands by taking the ratio of
+  # each bucket value over the final bucket.
+
+  # 5ms bucket.
+  $response_time < 5000 {
+    apache_http_request_time_microseconds["5000"][$request_method][$status_code]++
+  }
+
+  # 10ms bucket.
+  $response_time < 10000 {
+    apache_http_request_time_microseconds["10000"][$request_method][$status_code]++
+  }
+
+  # 25ms bucket.
+  $response_time < 25000 {
+    apache_http_request_time_microseconds["25000"][$request_method][$status_code]++
+  }
+
+  # 50ms bucket.
+  $response_time < 50000 {
+    apache_http_request_time_microseconds["50000"][$request_method][$status_code]++
+  }
+
+  # 1s
+  $response_time < 1000000 {
+    apache_http_request_time_microseconds["1000000"][$request_method][$status_code]++
+  }
+
+  # 5s
+  $response_time < 5000000 {
+    apache_http_request_time_microseconds["5000000"][$request_method][$status_code]++
+  }
+
+  # 10s
+  $response_time < 10000000 {
+    apache_http_request_time_microseconds["10000000"][$request_method][$status_code]++
+  }
+
+  # 30s
+  $response_time < 30000000 {
+    apache_http_request_time_microseconds["30000000"][$request_method][$status_code]++
+  }
+
+  # 60s
+  $response_time < 60000000 {
+    apache_http_request_time_microseconds["60000000"][$request_method][$status_code]++
+  }
+
+  # > 60s
+  $response_time > 60000000 {
+    apache_http_request_time_microseconds["99999999"][$request_method][$status_code]++
+  }
+}
